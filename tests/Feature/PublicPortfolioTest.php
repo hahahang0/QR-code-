@@ -5,6 +5,7 @@ use App\Models\QrCode as QrCodeRecord;
 use App\Services\PublicProfileUrlService;
 use App\Services\QrCodeService;
 use App\Services\QrRecordService;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -126,6 +127,41 @@ it('serves a validated profile photo only for an active portfolio', function () 
 
     $person->update(['status' => 'archived']);
     $this->get(route('profiles.photo', ['slug' => $person->public_slug]))->assertNotFound();
+});
+
+it('renders Supabase portfolio image URLs and keeps legacy public disk images working', function () {
+    config(['filesystems.disks.supabase.url' => 'https://project.supabase.co/storage/v1/object/public/profile-image']);
+    Storage::fake('public');
+    $publicDisk = Storage::disk('public');
+    $supabaseDisk = Mockery::mock(FilesystemAdapter::class);
+    $supabaseDisk->shouldReceive('url')
+        ->once()
+        ->with('portfolio/supabase-project.jpg')
+        ->andReturn(rtrim(config('filesystems.disks.supabase.url'), '/').'/portfolio/supabase-project.jpg');
+    $supabaseDisk->shouldNotReceive('exists');
+    Storage::shouldReceive('disk')->with('public')->andReturn($publicDisk);
+    Storage::shouldReceive('disk')->with('supabase')->andReturn($supabaseDisk);
+
+    $person = Person::factory()->create();
+    $person->portfolioProjects()->create([
+        'title' => 'Supabase project',
+        'image_path' => 'portfolio/supabase-project.jpg',
+        'sort_order' => 0,
+    ]);
+    $person->portfolioProjects()->create([
+        'title' => 'Legacy project',
+        'image_path' => 'portfolio/legacy-project.jpg',
+        'sort_order' => 1,
+    ]);
+    $publicDisk->put('portfolio/legacy-project.jpg', 'legacy image');
+
+    $publicDisk->assertMissing('portfolio/supabase-project.jpg');
+    $publicDisk->assertExists('portfolio/legacy-project.jpg');
+
+    $this->get(route('profiles.show', ['slug' => $person->public_slug]))
+        ->assertOk()
+        ->assertSee('https://project.supabase.co/storage/v1/object/public/profile-image/portfolio/supabase-project.jpg', false)
+        ->assertSee($publicDisk->url('portfolio/legacy-project.jpg'), false);
 });
 
 it('escapes untrusted portfolio text and never renders private record fields publicly', function () {

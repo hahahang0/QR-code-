@@ -132,7 +132,7 @@ class PersonController extends Controller
 
         $supabaseDisk = Storage::disk('supabase');
 
-        if ($supabaseDisk->exists($person->profile_photo_path)) {
+        if (! Storage::disk('local')->exists($person->profile_photo_path)) {
             return redirect()->away($supabaseDisk->url($person->profile_photo_path), 302, [
                 'Cache-Control' => 'public, max-age=3600',
                 'X-Content-Type-Options' => 'nosniff',
@@ -140,7 +140,6 @@ class PersonController extends Controller
         }
 
         $disk = Storage::disk('local');
-        abort_unless($disk->exists($person->profile_photo_path), 404);
 
         $response = response()->file($disk->path($person->profile_photo_path), [
             'Cache-Control' => 'public, max-age=3600',

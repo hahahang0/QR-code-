@@ -1,0 +1,18 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+vendor
+node_modules
+node_modules.pnpm-backup/
+access key.txt
+tests
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+public/hot
+public/storage
+public/build
+*.log

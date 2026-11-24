@@ -73,6 +73,22 @@ it('independently decodes a generated QR image to the configured public profile 
         ->and(QrCodeRecord::query()->count())->toBe(1);
 });
 
+it('generates production-domain profile URLs and leaves existing QR records unchanged', function () {
+    config(['app.url' => 'https://portfolio.example.com']);
+    $person = Person::factory()->create();
+    $qrCode = app(QrRecordService::class)->generate($person, null, 'Q');
+    $originalPayload = $qrCode->payload;
+
+    expect($originalPayload)->toBe('https://portfolio.example.com/profile/'.$person->public_slug)
+        ->and($originalPayload)->not->toContain('localhost')
+        ->and($originalPayload)->not->toContain('127.0.0.1');
+
+    config(['app.url' => 'http://localhost:8000']);
+
+    expect(app(PublicProfileUrlService::class)->for($person))->toBe('http://localhost:8000/profile/'.$person->public_slug)
+        ->and($qrCode->fresh()->payload)->toBe($originalPayload);
+});
+
 it('keeps the profile URL stable when the person name changes and hides archived profiles', function () {
     $person = Person::factory()->create(['full_name' => 'Original Name']);
     $stableSlug = $person->public_slug;
@@ -89,6 +105,7 @@ it('keeps the profile URL stable when the person name changes and hides archived
 it('serves a validated profile photo only for an active portfolio', function () {
     Storage::fake('local');
     Storage::fake('public');
+    Storage::fake('supabase');
 
     $this->post(route('admin.people.store'), [
         'full_name' => 'Photo Person',
@@ -96,7 +113,13 @@ it('serves a validated profile photo only for an active portfolio', function () 
     ])->assertRedirect();
 
     $person = Person::query()->firstOrFail();
-    Storage::disk('local')->assertExists($person->profile_photo_path);
+    Storage::disk('supabase')->assertExists($person->profile_photo_path);
+    expect($person->fresh()->profile_photo_path)->toBe($person->profile_photo_path);
+    $this->get(route('profiles.photo', ['slug' => $person->public_slug]))
+        ->assertRedirect(Storage::disk('supabase')->url($person->profile_photo_path));
+
+    Storage::disk('supabase')->delete($person->profile_photo_path);
+    Storage::disk('local')->put($person->profile_photo_path, UploadedFile::fake()->image('legacy.jpg')->getContent());
     $this->get(route('profiles.photo', ['slug' => $person->public_slug]))
         ->assertOk()
         ->assertHeader('X-Content-Type-Options', 'nosniff');
@@ -110,6 +133,7 @@ it('escapes untrusted portfolio text and never renders private record fields pub
         'full_name' => '<script>alert(1)</script>',
         'notes' => 'internal-only-notes',
         'address' => 'residential-only-address',
+        'location' => 'Public office, Kathmandu',
         'emergency_contact' => 'private-emergency-contact',
         'date_of_birth' => '1990-01-02',
         'gender' => 'private-gender',
@@ -122,5 +146,7 @@ it('escapes untrusted portfolio text and never renders private record fields pub
         ->assertDontSee('internal-only-notes')
         ->assertDontSee('residential-only-address')
         ->assertDontSee('private-emergency-contact')
-        ->assertDontSee('private-gender');
+        ->assertDontSee('private-gender')
+        ->assertSee('Public office, Kathmandu')
+        ->assertDontSee('ADR;TYPE=WORK:;;residential-only-address', false);
 });

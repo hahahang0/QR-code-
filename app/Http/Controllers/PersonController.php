@@ -125,10 +125,20 @@ class PersonController extends Controller
         return view('admin.people.show', compact('person', 'defaultErrorCorrection', 'profileUrl'));
     }
 
-    public function photo(string $slug): BinaryFileResponse
+    public function photo(string $slug): BinaryFileResponse|RedirectResponse
     {
         $person = Person::query()->where('public_slug', $slug)->where('status', 'active')->firstOrFail();
         abort_if($person->profile_photo_path === null, 404);
+
+        $supabaseDisk = Storage::disk('supabase');
+
+        if ($supabaseDisk->exists($person->profile_photo_path)) {
+            return redirect()->away($supabaseDisk->url($person->profile_photo_path), 302, [
+                'Cache-Control' => 'public, max-age=3600',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
         $disk = Storage::disk('local');
         abort_unless($disk->exists($person->profile_photo_path), 404);
 

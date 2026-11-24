@@ -21,39 +21,102 @@ class PortfolioManagementService
 
         try {
             DB::transaction(function () use ($person, $sections, &$newFiles, &$oldFiles): void {
-                $person->update(['other_social_links' => array_values($sections['other_social_links'] ?? [])]);
+                $person->update([
+                    'other_social_links' => array_values($sections['other_social_links'] ?? []),
+                ]);
 
-                $this->syncRows($person->employmentHistory(), $sections['employment'] ?? [], ['company_logo'], $newFiles, $oldFiles, [
-                    'company_name', 'job_title', 'employment_type', 'start_date', 'end_date', 'location', 'description', 'is_current',
-                ]);
-                $this->syncRows($person->educations(), $sections['education'] ?? [], [], $newFiles, $oldFiles, [
-                    'institution_name', 'qualification', 'field_of_study', 'start_year', 'graduation_year', 'description',
-                ]);
+                $this->syncRows(
+                    $person->employmentHistory(),
+                    $sections['employment'] ?? [],
+                    ['company_logo'],
+                    $newFiles,
+                    $oldFiles,
+                    [
+                        'company_name',
+                        'job_title',
+                        'employment_type',
+                        'start_date',
+                        'end_date',
+                        'location',
+                        'description',
+                        'is_current',
+                    ]
+                );
+
+                $this->syncRows(
+                    $person->educations(),
+                    $sections['education'] ?? [],
+                    [],
+                    $newFiles,
+                    $oldFiles,
+                    [
+                        'institution_name',
+                        'qualification',
+                        'field_of_study',
+                        'start_year',
+                        'graduation_year',
+                        'description',
+                    ]
+                );
+
                 $this->syncSkills($person, $sections['skills'] ?? [], $newFiles, $oldFiles);
-                $this->syncRows($person->portfolioProjects(), $sections['projects'] ?? [], ['image'], $newFiles, $oldFiles, [
-                    'title', 'description', 'technologies', 'project_url', 'github_url', 'start_date', 'completion_date',
-                ]);
-                $this->syncRows($person->certifications(), $sections['certifications'] ?? [], ['image'], $newFiles, $oldFiles, [
-                    'name', 'issuer', 'issue_date', 'credential_url', 'description',
-                ]);
+
+                $this->syncRows(
+                    $person->portfolioProjects(),
+                    $sections['projects'] ?? [],
+                    ['image'],
+                    $newFiles,
+                    $oldFiles,
+                    [
+                        'title',
+                        'description',
+                        'technologies',
+                        'project_url',
+                        'github_url',
+                        'start_date',
+                        'completion_date',
+                    ]
+                );
+
+                $this->syncRows(
+                    $person->certifications(),
+                    $sections['certifications'] ?? [],
+                    ['image'],
+                    $newFiles,
+                    $oldFiles,
+                    [
+                        'name',
+                        'issuer',
+                        'issue_date',
+                        'credential_url',
+                        'description',
+                    ]
+                );
             });
         } catch (Throwable $exception) {
-            Storage::disk('public')->delete($newFiles);
+            Storage::disk('supabase')->delete($newFiles);
 
             throw $exception;
         }
 
-        Storage::disk('public')->delete($oldFiles);
+        $this->deleteStoredFiles($oldFiles);
     }
 
-    /** @param list<array<string, mixed>> $rows
-     * @param  list<string>  $fileFields
-     * @param  list<string>  $fillable
-     * @param  list<string>  $newFiles
-     * @param  list<string>  $oldFiles
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @param list<string> $fileFields
+     * @param list<string> $fillable
+     * @param list<string> $newFiles
+     * @param list<string> $oldFiles
      */
-    private function syncRows(HasMany $relation, array $rows, array $fileFields, array &$newFiles, array &$oldFiles, array $fillable): void
-    {
+    private function syncRows(
+        HasMany $relation,
+        array $rows,
+        array $fileFields,
+        array &$newFiles,
+        array &$oldFiles,
+        array $fillable
+    ): void {
         $existing = $relation->get()->keyBy('id');
 
         foreach (array_values($rows) as $position => $row) {
@@ -61,7 +124,9 @@ class PortfolioManagementService
             $model = $identifier === null ? null : $existing->pull((int) $identifier);
 
             if ($identifier !== null && $model === null) {
-                throw ValidationException::withMessages(['portfolio' => 'A portfolio item does not belong to this person. Refresh the page and try again.']);
+                throw ValidationException::withMessages([
+                    'portfolio' => 'A portfolio item does not belong to this person. Refresh the page and try again.',
+                ]);
             }
 
             $model ??= $relation->make();
@@ -71,8 +136,9 @@ class PortfolioManagementService
                 $file = $row[$fileField] ?? null;
 
                 if ($file instanceof UploadedFile) {
-                    $path = $file->store('portfolio', 'public');
+                    $path = $file->store('portfolio', 'supabase');
                     $newFiles[] = $path;
+
                     $pathField = match ($fileField) {
                         'company_logo' => 'company_logo_path',
                         'image' => 'image_path',
@@ -88,10 +154,15 @@ class PortfolioManagementService
             }
 
             if (array_key_exists('technologies', $attributes)) {
-                $attributes['technologies'] = array_values(array_filter(array_map('trim', explode(',', (string) $attributes['technologies']))));
+                $attributes['technologies'] = array_values(
+                    array_filter(
+                        array_map('trim', explode(',', (string) $attributes['technologies']))
+                    )
+                );
             }
 
             $attributes['sort_order'] = $position;
+
             $model->fill($attributes);
             $model->save();
         }
@@ -113,12 +184,41 @@ class PortfolioManagementService
         }
     }
 
-    /** @param list<array{name: string}> $rows
-     * @param  list<string>  $newFiles
-     * @param  list<string>  $oldFiles
+    /**
+     * @param list<array{name: string}> $rows
+     * @param list<string> $newFiles
+     * @param list<string> $oldFiles
      */
-    private function syncSkills(Person $person, array $rows, array &$newFiles, array &$oldFiles): void
+    private function syncSkills(
+        Person $person,
+        array $rows,
+        array &$newFiles,
+        array &$oldFiles
+    ): void {
+        $this->syncRows(
+            $person->skills(),
+            $rows,
+            [],
+            $newFiles,
+            $oldFiles,
+            ['name']
+        );
+    }
+
+    /**
+     * Delete old files from Supabase or, for legacy files,
+     * from Laravel's public disk.
+     *
+     * @param list<string> $paths
+     */
+    private function deleteStoredFiles(array $paths): void
     {
-        $this->syncRows($person->skills(), $rows, [], $newFiles, $oldFiles, ['name']);
+        foreach (array_unique($paths) as $path) {
+            if (Storage::disk('supabase')->exists($path)) {
+                Storage::disk('supabase')->delete($path);
+            } else {
+                Storage::disk('public')->delete($path);
+            }
+        }
     }
 }

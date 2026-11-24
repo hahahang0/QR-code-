@@ -22,14 +22,14 @@ class PersonManagementService
         $attributes['status'] ??= 'active';
 
         if ($photo instanceof UploadedFile) {
-            $attributes['profile_photo_path'] = $photo->store('people', 'local');
+            $attributes['profile_photo_path'] = $photo->store('people', 'supabase');
         }
 
         try {
             return DB::transaction(fn (): Person => Person::query()->create($attributes));
         } catch (Throwable $exception) {
             if (isset($attributes['profile_photo_path'])) {
-                Storage::disk('local')->delete($attributes['profile_photo_path']);
+                Storage::disk('supabase')->delete($attributes['profile_photo_path']);
             }
 
             throw $exception;
@@ -41,10 +41,11 @@ class PersonManagementService
     {
         $photo = $attributes['profile_photo'] ?? null;
         unset($attributes['profile_photo']);
+
         $previousPhoto = $person->profile_photo_path;
 
         if ($photo instanceof UploadedFile) {
-            $attributes['profile_photo_path'] = $photo->store('people', 'local');
+            $attributes['profile_photo_path'] = $photo->store('people', 'supabase');
         }
 
         try {
@@ -53,14 +54,14 @@ class PersonManagementService
             });
         } catch (Throwable $exception) {
             if (isset($attributes['profile_photo_path'])) {
-                Storage::disk('local')->delete($attributes['profile_photo_path']);
+                Storage::disk('supabase')->delete($attributes['profile_photo_path']);
             }
 
             throw $exception;
         }
 
         if ($photo instanceof UploadedFile && $previousPhoto !== null) {
-            Storage::disk('local')->delete($previousPhoto);
+            $this->deleteStoredPhoto($previousPhoto);
         }
 
         return $person->refresh();
@@ -69,6 +70,18 @@ class PersonManagementService
     public function archive(Person $person): void
     {
         $person->delete();
+    }
+
+    private function deleteStoredPhoto(string $path): void
+    {
+        if (Storage::disk('supabase')->exists($path)) {
+            Storage::disk('supabase')->delete($path);
+
+            return;
+        }
+
+        // Support photos uploaded before the Supabase migration.
+        Storage::disk('local')->delete($path);
     }
 
     private function newReferenceNumber(): string

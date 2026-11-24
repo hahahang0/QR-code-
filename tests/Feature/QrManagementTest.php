@@ -1,39 +1,33 @@
 <?php
 
+use App\Models\Person;
 use App\Models\QrCode as QrCodeRecord;
-use App\Services\QrPayloadService;
+use App\Services\QrRecordService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Zxing\QrReader;
 
 uses(RefreshDatabase::class);
 
-it('returns independently decodable PNG and SVG output without a QR database record', function () {
-    $response = $this->postJson(route('qr.generate'), [
-        'person' => [
-            'full_name' => 'Zoë 李 शर्मा',
-            'phone' => '+977-980-123-4567',
-            'address' => 'Café #2 — Kathmandu',
-            'department' => 'R&D',
-            'designation' => 'Staff Engineer',
-        ],
-        'include' => ['phone', 'address', 'department', 'designation'],
-        'error_correction' => 'Q',
-    ])->assertOk()->assertHeader('Content-Type', 'application/json');
+it('lists generated profile URL QR codes in the management screen', function () {
+    $person = Person::factory()->create();
+    $qrCode = app(QrRecordService::class)->generate($person, null);
 
-    $result = $response->json();
-    $png = base64_decode(substr($result['png'], strlen('data:image/png;base64,')), true);
-    $reader = new QrReader($png, QrReader::SOURCE_TYPE_BLOB);
+    $this->get(route('admin.qr-codes.index'))
+        ->assertOk()
+        ->assertSee($person->full_name)
+        ->assertSee('Q · v2');
 
-    expect($reader->text())->toBe($result['payload'])
-        ->and($result['person']['department'])->toBe('R&D')
-        ->and($result['person']['designation'])->toBe('Staff Engineer')
-        ->and($result['svg'])->toStartWith('data:image/svg+xml;base64,')
-        ->and(QrCodeRecord::query()->count())->toBe(0);
+    expect(QrCodeRecord::query()->count())->toBe(1)
+        ->and($qrCode->payload)->toContain('/profile/'.$person->public_slug);
 });
 
-it('keeps QR version and payload validation active without database-backed history', function () {
-    $payloadService = app(QrPayloadService::class);
-    expect(fn () => $payloadService->validate('{broken'))->toThrow(InvalidArgumentException::class);
-    $this->get('/admin/qr-codes')->assertNotFound();
-    expect(QrCodeRecord::query()->count())->toBe(0);
+it('exposes working PNG and SVG downloads for an unauthenticated administrator', function () {
+    $person = Person::factory()->create();
+    $qrCode = app(QrRecordService::class)->generate($person, null);
+
+    $this->get(route('admin.qr-codes.download', [$qrCode, 'png']))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'image/png');
+    $this->get(route('admin.qr-codes.download', [$qrCode, 'svg']))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'image/svg+xml; charset=utf-8');
 });

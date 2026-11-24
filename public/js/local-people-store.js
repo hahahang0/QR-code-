@@ -127,6 +127,7 @@ export function isValidLocalPersonRecord(record) {
         && new Set(record.include).size === record.include.length
         && record.include.every((field) => OPTIONAL_PERSON_FIELDS.includes(field))
         && (record.error_correction === 'Q' || record.error_correction === 'H')
+        && (record.status === undefined || ['active', 'inactive'].includes(record.status))
         && isValidTimestamp(record.created_at)
         && isValidTimestamp(record.updated_at)
         && (record.latest_payload === null || isValidPayload(record.latest_payload, record.person))
@@ -150,6 +151,7 @@ export function upgradeLocalPersonRecord(record) {
         updated_at: record.updated_at || record.created_at || now,
         latest_payload: record.latest_payload ?? null,
         history: record.history ?? [],
+        status: record.status ?? 'active',
     };
 
     return isValidLocalPersonRecord(upgraded) ? upgraded : null;

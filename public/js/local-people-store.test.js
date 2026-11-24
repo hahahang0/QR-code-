@@ -45,7 +45,7 @@ test('accepts Unicode person records and round-trips them through local storage'
 
     assert.equal(isValidLocalPersonRecord(record), true);
     store.write([record]);
-    assert.deepEqual(store.read(), [record]);
+    assert.deepEqual(store.read(), [{ ...record, status: 'active' }]);
 });
 
 test('upgrades existing browser records that predate local QR history metadata', () => {

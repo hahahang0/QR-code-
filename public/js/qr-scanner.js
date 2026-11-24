@@ -1,10 +1,27 @@
 (() => {
+    const dashboardTab = document.querySelector('#dashboard-tab');
     const generateTab = document.querySelector('#generate-tab');
     const peopleTab = document.querySelector('#people-tab');
+    const qrTab = document.querySelector('#qr-tab');
     const scanTab = document.querySelector('#scan-tab');
-    const generatePanel = document.querySelector('#generate-panel');
-    const peoplePanel = document.querySelector('#people-panel');
-    const scanPanel = document.querySelector('#scan-panel');
+    const activityTab = document.querySelector('#activity-tab');
+    const panels = {
+        dashboard: document.querySelector('#dashboard-panel'),
+        generate: document.querySelector('#generate-panel'),
+        people: document.querySelector('#people-panel'),
+        qr: document.querySelector('#qr-panel'),
+        scan: document.querySelector('#scan-panel'),
+        activity: document.querySelector('#activity-panel'),
+    };
+    const breadcrumb = document.querySelector('#breadcrumb-current');
+    const navigation = new Map([
+        [dashboardTab, 'dashboard'],
+        [generateTab, 'generate'],
+        [peopleTab, 'people'],
+        [qrTab, 'qr'],
+        [scanTab, 'scan'],
+        [activityTab, 'activity'],
+    ].filter(([tab]) => tab));
     const startButton = document.querySelector('#start-camera');
     const stopButton = document.querySelector('#stop-camera');
     const cameraSelect = document.querySelector('#camera-select');
@@ -20,6 +37,7 @@
     const rawText = document.querySelector('#raw-text');
     const copyButton = document.querySelector('#copy-record');
     const scanAgainButton = document.querySelector('#scan-again');
+    const openProfileButton = document.querySelector('#open-profile');
 
     const fieldLabels = {
         full_name: 'Full name',
@@ -313,10 +331,49 @@
 
     function handleDecodedText(decodedText) {
         resultSection.hidden = false;
-        rawData.hidden = false;
-        rawText.textContent = decodedText;
+        rawData.hidden = true;
         personData.replaceChildren();
+        copyButton.hidden = true;
+        openProfileButton.hidden = true;
         copyText = '';
+
+        let decodedUrl;
+
+        try {
+            decodedUrl = new URL(decodedText);
+        } catch {
+            decodedUrl = null;
+        }
+
+        if (decodedUrl && ['http:', 'https:'].includes(decodedUrl.protocol) && !decodedUrl.username && !decodedUrl.password) {
+            const configuredOrigin = document.body.dataset.profileOrigin;
+            const profilePath = /^\/profile\/[A-Za-z0-9-]+\/?$/u.test(decodedUrl.pathname);
+            const isProfileUrl = profilePath && configuredOrigin && decodedUrl.origin === new URL(configuredOrigin).origin;
+            const term = document.createElement('dt');
+            const definition = document.createElement('dd');
+            const link = document.createElement('a');
+            term.textContent = isProfileUrl ? 'Public profile' : 'Web address';
+            link.href = decodedUrl.href;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = decodedUrl.href;
+            definition.append(link);
+            personData.append(term, definition);
+            resultHeading.textContent = isProfileUrl ? 'Portfolio link found' : 'Website link found';
+            signatureNote.textContent = isProfileUrl
+                ? 'This QR code points to a QR Manager portfolio. Open it when you are ready.'
+                : 'This is an external link. Check that you trust the destination before opening it.';
+            openProfileButton.href = decodedUrl.href;
+            openProfileButton.textContent = isProfileUrl ? 'Open profile' : 'Open link';
+            openProfileButton.hidden = false;
+            copyText = decodedUrl.href;
+            copyButton.hidden = false;
+            setStatus(isProfileUrl ? 'Public profile URL decoded.' : 'A web address was decoded.');
+            resultSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            stopCamera();
+
+            return;
+        }
 
         try {
             const person = validatePersonPayload(decodedText);
@@ -338,9 +395,11 @@
             });
 
             resultHeading.textContent = 'Person record decoded';
-            signatureNote.textContent = 'The data matches person payload schema version 1. No digital signature is implemented, so issuer identity is not verified.';
-            setStatus('QR code decoded and validated.');
+            signatureNote.textContent = 'This is an older QR format that contains personal details directly. Regenerate it from the person record to create a portfolio link.';
+            resultHeading.textContent = 'Older person QR format';
+            setStatus('Legacy person details decoded.');
             copyText = lines.join('\n');
+            copyButton.hidden = false;
         } catch (error) {
             resultHeading.textContent = 'QR data could not be validated';
             signatureNote.textContent = error.message;
@@ -379,6 +438,12 @@
 
         scanningImage = true;
         scanLocked = true;
+        resultSection.hidden = true;
+        personData.replaceChildren();
+        rawData.hidden = true;
+        openProfileButton.hidden = true;
+        copyButton.hidden = true;
+        copyText = '';
         await stopCamera();
         setStatus('Decoding image on this device…');
 
@@ -386,15 +451,18 @@
 
         try {
             reader = createReader();
-            const result = await reader.decodeFromImageUrl(imageUrl);
+            const result = await decodeUploadedImage(imageUrl);
             handleDecodedText(result.getText());
         } catch (error) {
             console.warn('QR image decoding failed.', error);
             scanLocked = false;
             resultSection.hidden = false;
             personData.replaceChildren();
+            signatureNote.textContent = 'The image may be blurry, rotated, too small, or missing the QR code’s white border.';
+            copyText = '';
+            copyButton.hidden = true;
             resultHeading.textContent = 'No QR code could be decoded';
-            signatureNote.textContent = 'Try an upright, sharper image with the entire QR code and its white border visible.';
+            signatureNote.textContent = 'Try a clearer image with the complete QR code and its white border visible. Rotated images are checked automatically.';
             rawData.hidden = true;
             setStatus('The image was opened, but no readable QR code was found.', true);
         } finally {
@@ -403,6 +471,81 @@
             reader = null;
 
             scanningImage = false;
+            imageInput.value = '';
+        }
+    }
+
+    async function decodeUploadedImage(imageUrl) {
+        try {
+            return await reader.decodeFromImageUrl(imageUrl);
+        } catch {
+            const image = new Image();
+            image.src = imageUrl;
+
+            if (typeof image.decode === 'function') {
+                await image.decode();
+            } else {
+                await new Promise((resolve, reject) => {
+                    image.onload = resolve;
+                    image.onerror = reject;
+                });
+            }
+
+            const sourceWidth = image.naturalWidth || image.width;
+            const sourceHeight = image.naturalHeight || image.height;
+            const longestSide = Math.max(sourceWidth, sourceHeight);
+            const targetLongestSide = Math.min(1800, Math.max(longestSide, Math.min(900, longestSide * 3)));
+            const scale = targetLongestSide / longestSide;
+            const width = Math.max(1, Math.round(sourceWidth * scale));
+            const height = Math.max(1, Math.round(sourceHeight * scale));
+
+            for (const orientation of [0, 90, 180, 270]) {
+                const canvas = document.createElement('canvas');
+                const isSideways = orientation === 90 || orientation === 270;
+                canvas.width = isSideways ? height : width;
+                canvas.height = isSideways ? width : height;
+
+                const context = canvas.getContext('2d', { willReadFrequently: true });
+
+                if (!context) {
+                    throw new Error('The image could not be prepared for QR decoding.');
+                }
+
+                context.imageSmoothingEnabled = scale < 1;
+                context.save();
+                context.translate(canvas.width / 2, canvas.height / 2);
+                context.rotate((orientation * Math.PI) / 180);
+                context.drawImage(image, -width / 2, -height / 2, width, height);
+                context.restore();
+
+                try {
+                    return await reader.decodeFromCanvas(canvas);
+                } catch {
+                    if (orientation !== 0) {
+                        continue;
+                    }
+
+                    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+
+                    for (let index = 0; index < pixels.data.length; index += 4) {
+                        const luminance = (pixels.data[index] * 0.299) + (pixels.data[index + 1] * 0.587) + (pixels.data[index + 2] * 0.114);
+                        const contrast = Math.max(0, Math.min(255, (luminance - 128) * 1.6 + 128));
+                        pixels.data[index] = contrast;
+                        pixels.data[index + 1] = contrast;
+                        pixels.data[index + 2] = contrast;
+                    }
+
+                    context.putImageData(pixels, 0, 0);
+
+                    try {
+                        return await reader.decodeFromCanvas(canvas);
+                    } catch {
+                        // Continue with other orientations; upload processing stays local to this device.
+                    }
+                }
+            }
+
+            throw new Error('No readable QR code was found in this image.');
         }
     }
 
@@ -428,37 +571,43 @@
     }
 
     function activateTab(tab) {
-        const scannerSelected = tab === scanTab;
-        const peopleSelected = tab === peopleTab;
-        peopleTab.setAttribute('aria-selected', String(peopleSelected));
-        scanTab.setAttribute('aria-selected', String(scannerSelected));
-        generateTab.setAttribute('aria-selected', String(!scannerSelected && !peopleSelected));
-        generatePanel.hidden = scannerSelected || peopleSelected;
-        peoplePanel.hidden = scannerSelected || !peopleSelected;
-        scanPanel.hidden = !scannerSelected;
+        const currentScreen = navigation.get(tab);
 
-        if (!scannerSelected) {
+        if (!currentScreen) {
+            return;
+        }
+        const pageTitles = {
+            dashboard: 'Dashboard',
+            generate: 'Register New Person',
+            people: 'People Management',
+            qr: 'QR Code Management',
+            scan: 'QR Scanner',
+            activity: 'Activity Logs',
+        };
+
+        navigation.forEach((screen, navigationTab) => {
+            const selected = navigationTab === tab;
+            navigationTab.setAttribute('aria-selected', String(selected));
+            navigationTab.classList.toggle('active', selected && navigationTab !== generateTab);
+        });
+        Object.entries(panels).forEach(([screen, panel]) => {
+            panel.hidden = screen !== currentScreen;
+        });
+        breadcrumb.textContent = pageTitles[currentScreen];
+        document.body.classList.remove('nav-open');
+
+        if (currentScreen !== 'scan') {
             stopCamera();
         }
     }
 
-    generateTab.addEventListener('click', () => activateTab(generateTab));
-    peopleTab.addEventListener('click', () => activateTab(peopleTab));
-    scanTab.addEventListener('click', () => activateTab(scanTab));
-
-    document.querySelectorAll('[role="tab"]').forEach((tab) => {
-        tab.addEventListener('keydown', (event) => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-                return;
-            }
-
-            event.preventDefault();
-            const tabs = [generateTab, peopleTab, scanTab].filter((item) => !item.hidden);
-            const currentIndex = tabs.indexOf(tab);
-            let nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : currentIndex + (event.key === 'ArrowLeft' ? -1 : 1);
-            nextIndex = (nextIndex + tabs.length) % tabs.length;
-            tabs[nextIndex].focus();
-            activateTab(tabs[nextIndex]);
+    navigation.forEach((screen, tab) => {
+        tab.addEventListener('click', () => activateTab(tab));
+    });
+    document.querySelectorAll('[data-open-screen]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const destination = [...navigation.entries()].find(([, screen]) => screen === button.dataset.openScreen)?.[0];
+            destination?.click();
         });
     });
 
@@ -482,12 +631,22 @@
     imageInput.addEventListener('change', () => decodeImage(imageInput.files?.[0]));
 
     copyButton.addEventListener('click', copyRecord);
+    openProfileButton.addEventListener('click', (event) => {
+        const destination = new URL(openProfileButton.href);
+
+        if (!['http:', 'https:'].includes(destination.protocol)) {
+            event.preventDefault();
+        }
+    });
     scanAgainButton.addEventListener('click', () => {
         scanLocked = false;
         resultSection.hidden = true;
         personData.replaceChildren();
         rawData.hidden = true;
         rawText.textContent = '';
+        openProfileButton.hidden = true;
+        copyButton.hidden = true;
+        copyText = '';
         imageInput.value = '';
         setStatus('Ready. Start the camera or choose another QR image.');
         startButton.focus();
@@ -499,4 +658,10 @@
             stopCamera();
         }
     });
+
+    if (navigation.size > 0) {
+        const initialScreen = document.body.dataset.defaultScreen || 'dashboard';
+        const initialTab = [...navigation.entries()].find(([, screen]) => screen === initialScreen)?.[0] || dashboardTab;
+        activateTab(initialTab);
+    }
 })();

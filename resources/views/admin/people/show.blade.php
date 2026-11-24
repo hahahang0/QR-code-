@@ -9,7 +9,7 @@
     <div class="profile-main">
         <section class="panel-card">
             <div class="profile-title">
-                @if ($person->profile_photo_path)<img class="profile-avatar" src="{{ route('admin.people.photo', $person) }}" alt="Profile photo of {{ $person->full_name }}">@else<span class="profile-avatar">{{ strtoupper(substr($person->full_name, 0, 1)) }}</span>@endif
+                @if ($person->profile_photo_path)<img class="profile-avatar" src="{{ route('profiles.photo', ['slug' => $person->public_slug]) }}" alt="Profile photo of {{ $person->full_name }}">@else<span class="profile-avatar">{{ strtoupper(substr($person->full_name, 0, 1)) }}</span>@endif
                 <div><span class="badge {{ $person->status === 'active' ? 'badge-green' : 'badge-gray' }}">{{ ucfirst($person->status) }}</span><h2>{{ $person->full_name }}</h2><p class="muted">Registered {{ $person->created_at->format('F j, Y') }}</p></div>
             </div>
             <div class="detail-section"><h3>Personal information</h3><dl class="detail-grid"><dt>Person ID</dt><dd>{{ $person->reference_number ?: '—' }}</dd><dt>Date of birth</dt><dd>{{ $person->date_of_birth?->format('F j, Y') ?: '—' }}</dd><dt>Gender</dt><dd>{{ $person->gender ?: '—' }}</dd></dl></div>
@@ -25,22 +25,33 @@
     </div>
     <aside class="profile-side">
         <section class="panel-card qr-profile">
-            <div class="section-heading"><div><h2>QR code</h2><p class="muted">Embedded information is readable offline.</p></div>@if ($person->currentQrCode)<span class="badge badge-green">Active</span>@endif</div>
+            <div class="section-heading"><div><h2>QR code</h2><p class="muted">Scan to open this person’s public portfolio.</p></div>@if ($person->currentQrCode)<span class="badge badge-green">Active</span>@endif</div>
             @if ($person->currentQrCode)
-                <img class="profile-qr" src="{{ $currentQrImage['svg'] }}" alt="QR code for {{ $person->full_name }}">
+                <img class="profile-qr" src="{{ route('admin.qr-codes.preview', [$person->currentQrCode, 'svg']) }}" alt="QR code for {{ $person->full_name }}">
                 <strong>{{ $person->full_name }}</strong><small>{{ $person->reference_number ?: 'Person record' }}</small>
-                <p class="muted">{{ count($person->currentQrCode->included_fields ?? []) + 1 }} fields embedded · {{ $person->currentQrCode->error_correction }} correction</p>
+                <p class="public-profile-url"><a href="{{ $profileUrl }}" target="_blank" rel="noopener noreferrer">{{ $profileUrl }}</a></p>
+                <p class="muted">Public profile URL · {{ $person->currentQrCode->error_correction }} error correction</p>
                 <div class="button-stack"><a class="button button-primary" href="{{ route('admin.qr-codes.download', [$person->currentQrCode, 'png']) }}">Download PNG</a><a class="button button-light" href="{{ route('admin.qr-codes.download', [$person->currentQrCode, 'svg']) }}">Download SVG</a><button class="button button-light" onclick="window.print()" type="button">Print QR code</button></div>
+                <button class="button button-light full-button" type="button" data-copy-profile-url="{{ $profileUrl }}">Copy profile URL</button>
+                <a class="button button-light full-button" href="{{ $profileUrl }}" target="_blank" rel="noopener noreferrer">Preview public profile</a>
             @else<p class="empty-state compact">No QR code generated yet.</p>@endif
             <form method="post" action="{{ route('admin.people.qr-codes.store', $person) }}" class="generate-qr-form">@csrf
                 <p class="muted">Generate or replace the current code.</p>
-                @php($included = $person->currentQrCode?->included_fields ?? ['phone', 'email', 'organization'])
-                @foreach ([['phone','Phone'],['email','Email'],['organization','Organization'],['department','Department'],['designation','Designation'],['address','Address'],['date_of_birth','Date of birth'],['gender','Gender'],['emergency_contact','Emergency contact'],['reference_number','Person ID'],['notes','Notes']] as [$field,$label])<label class="small-check"><input type="checkbox" name="include[]" value="{{ $field }}" @checked(in_array($field, $included, true))>{{ $label }}</label>@endforeach
                 <div class="field full"><label for="person-qr-correction">Error correction</label><select id="person-qr-correction" name="error_correction"><option value="Q" @selected(($person->currentQrCode?->error_correction ?? $defaultErrorCorrection ?? 'Q') === 'Q')>Q · Recommended</option><option value="H" @selected(($person->currentQrCode?->error_correction ?? $defaultErrorCorrection ?? 'Q') === 'H')>H · Maximum recovery</option></select></div>
                 <button class="button button-outline full-button">Generate QR code</button>
             </form>
-            <p class="helper-note">This QR code contains the selected personal details. Anyone who scans a copy can read them.</p>
+            <p class="helper-note">This QR code contains the public portfolio URL. Information shown on that page is accessible to anyone with the link.</p>
         </section>
     </aside>
 </div>
+<script>
+document.querySelectorAll('[data-copy-profile-url]').forEach((button) => button.addEventListener('click', async () => {
+    try {
+        await navigator.clipboard.writeText(button.dataset.copyProfileUrl);
+        button.textContent = 'Copied';
+    } catch {
+        window.prompt('Copy this public profile URL:', button.dataset.copyProfileUrl);
+    }
+}));
+</script>
 @endsection

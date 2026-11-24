@@ -16,7 +16,6 @@ class QrManagementController extends Controller
 {
     public function index(Request $request): View
     {
-        $this->authorize('viewAny', Person::class);
         $filters = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'status' => ['nullable', 'string', 'in:current,previous']]);
         $query = QrCodeRecord::query()->with(['person', 'generator'])
             ->when(isset($filters['search']) && trim($filters['search']) !== '', function ($query) use ($filters): void {
@@ -33,10 +32,14 @@ class QrManagementController extends Controller
 
     public function store(GeneratePersonQrCodeRequest $request, Person $person, QrRecordService $qrRecords, ActivityLogService $activityLogs): RedirectResponse
     {
+        if ($person->status !== 'active') {
+            return back()->withErrors(['person' => 'Activate this profile before generating a public QR code.']);
+        }
+
         $values = $request->validated();
 
         try {
-            $qrCode = $qrRecords->generate($person, $request->user(), $values['include'] ?? [], $values['error_correction']);
+            $qrCode = $qrRecords->generate($person, $request->user(), $values['error_correction']);
         } catch (\InvalidArgumentException $exception) {
             return back()->withInput()->withErrors(['include' => $exception->getMessage()]);
         }
@@ -80,8 +83,6 @@ class QrManagementController extends Controller
 
     public function deactivate(Request $request, QrCodeRecord $qrCode, ActivityLogService $activityLogs): RedirectResponse
     {
-        $this->authorize('update', $qrCode->person);
-
         if (! $qrCode->is_current) {
             return back()->with('status', 'This QR code version is already inactive.');
         }

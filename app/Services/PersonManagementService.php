@@ -12,13 +12,14 @@ use Throwable;
 class PersonManagementService
 {
     /** @param array<string, mixed> $attributes */
-    public function create(array $attributes, User $actor): Person
+    public function create(array $attributes, ?User $actor): Person
     {
         $photo = $attributes['profile_photo'] ?? null;
         unset($attributes['profile_photo']);
 
-        $attributes['created_by'] = $actor->id;
+        $attributes['created_by'] = $actor?->id;
         $attributes['reference_number'] ??= $this->newReferenceNumber();
+        $attributes['status'] ??= 'active';
 
         if ($photo instanceof UploadedFile) {
             $attributes['profile_photo_path'] = $photo->store('people', 'local');

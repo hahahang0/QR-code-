@@ -2,7 +2,7 @@
 @section('title', 'QR Code Management')
 @section('content')
 <div class="page-heading">
-    <div><p class="eyebrow">QR LIBRARY</p><h1>QR Code Management</h1><p class="muted">Review, download, and manage personal QR codes.</p></div>
+    <div><p class="eyebrow">QR LIBRARY</p><h1>QR Code Management</h1><p class="muted">Review and download QR codes that open public portfolios.</p></div>
     <a class="button button-primary" href="{{ route('admin.people.index', ['qr_status' => 'missing']) }}">＋ Generate QR Code</a>
 </div>
 <section class="stat-grid compact-stats">
@@ -16,13 +16,13 @@
         <select name="status" aria-label="Filter QR codes"><option value="">All versions</option><option value="current" @selected(request('status') === 'current')>Current</option><option value="previous" @selected(request('status') === 'previous')>Previous</option></select>
         <button class="button button-light">Apply filters</button>
     </form>
-    <div class="table-scroll"><table>
+    <div class="table-scroll"><table class="qr-codes-table">
         <thead><tr><th>QR code</th><th>Person</th><th>Status</th><th>Correction</th><th>Generated</th><th>Actions</th></tr></thead>
         <tbody>
         @forelse ($qrCodes as $qrCode)
             <tr>
                 <td><img class="qr-thumb" src="{{ route('admin.qr-codes.preview', [$qrCode, 'png']) }}" alt="QR code for {{ $qrCode->person->full_name }}" loading="lazy"></td>
-                <td>@if ($qrCode->person->trashed)<span class="person-link">{{ $qrCode->person->full_name }}<small>Archived · {{ $qrCode->person->reference_number ?: 'Record '.$qrCode->person->id }}</small></span>@else<a class="person-link" href="{{ route('admin.people.show', $qrCode->person) }}"><span>{{ $qrCode->person->full_name }}<small>{{ $qrCode->person->reference_number ?: 'Record '.$qrCode->person->id }}</small></span></a>@endif</td>
+                <td>@if ($qrCode->person->trashed())<span class="person-link">{{ $qrCode->person->full_name }}<small>Archived · {{ $qrCode->person->reference_number ?: 'Record '.$qrCode->person->id }}</small></span>@else<a class="person-link" href="{{ route('admin.people.show', $qrCode->person) }}"><span>{{ $qrCode->person->full_name }}<small>{{ $qrCode->person->reference_number ?: 'Record '.$qrCode->person->id }}</small></span></a>@endif</td>
                 <td><span class="badge {{ $qrCode->is_current ? 'badge-green' : 'badge-gray' }}">{{ $qrCode->is_current ? 'Current' : 'Previous' }}</span></td>
                 <td>{{ $qrCode->error_correction }} · v{{ $qrCode->schema_version }}</td>
                 <td>{{ $qrCode->created_at->format('M j, Y') }}<small class="table-sub">{{ $qrCode->created_at->format('g:i A') }}</small></td>
@@ -34,6 +34,6 @@
         </tbody>
     </table></div>
     <div class="pagination-row"><span>Showing {{ $qrCodes->firstItem() ?? 0 }}–{{ $qrCodes->lastItem() ?? 0 }} of {{ $qrCodes->total() }} versions</span>{{ $qrCodes->links() }}</div>
-    <p class="helper-note">A QR code stores its selected personal information directly. Deleting or archiving a person does not erase QR code copies already downloaded or printed.</p>
+    <p class="helper-note">New QR codes contain a public profile URL. Archiving a person disables that profile URL, but downloaded or printed QR images cannot be recalled.</p>
 </section>
 @endsection

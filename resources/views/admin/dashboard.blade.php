@@ -1,7 +1,7 @@
 @extends('admin.layouts.app')
 @section('title', 'Dashboard')
 @section('content')
-<div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>Dashboard overview</h1><p class="muted">Welcome back, {{ auth()->user()->name }}. Here's what's happening with your workspace today.</p></div><a class="button button-primary" href="{{ route('admin.people.create') }}">＋ Add New Person</a></div>
+<div class="page-heading"><div><p class="eyebrow">OVERVIEW</p><h1>Dashboard overview</h1><p class="muted">A quick look at professional profiles and their QR codes.</p></div><a class="button button-primary" href="{{ route('admin.people.create') }}">＋ Add New Person</a></div>
 <section class="stat-grid">
     <article class="stat-card"><span class="stat-icon violet">♙</span><span class="muted">Total People</span><strong>{{ number_format($statistics['people']) }}</strong><small>Registered records</small></article>
     <article class="stat-card"><span class="stat-icon blue">▦</span><span class="muted">QR Codes Generated</span><strong>{{ number_format($statistics['qr_codes']) }}</strong><small>Generation history</small></article>
@@ -10,13 +10,13 @@
 </section>
 <section class="panel-card registrations-card"><div class="section-heading"><div><h2>Registration overview</h2><p class="muted">People added to your workspace over time.</p></div><form method="get"><label class="sr-only" for="range">Date range</label><select id="range" name="range" class="range-select" onchange="this.form.submit()"><option value="7" @selected($range === 7)>Last 7 days</option><option value="30" @selected($range === 30)>Last 30 days</option><option value="90" @selected($range === 90)>Last 90 days</option></select></form></div><div class="registration-chart" role="img" aria-label="Daily registrations during the last {{ $range }} days">@foreach ($registrationDays as $day)<div class="chart-column"><span class="chart-value">{{ $day['total'] ?: '' }}</span><div class="chart-track"><i style="height: {{ max(3, (int) round($day['total'] / $maxRegistrations * 100)) }}%"></i></div><small>{{ $day['label'] }}</small></div>@endforeach</div></section>
 <div class="dashboard-grid">
-    <section class="panel-card"><div class="section-heading"><div><h2>Recently registered people</h2><p class="muted">The latest records added to your workspace.</p></div><a class="text-link" href="{{ route('admin.people.index') }}">View all <span>→</span></a></div>
+    <section class="panel-card"><div class="section-heading"><div><h2>Recently registered people</h2><p class="muted">The latest professional profiles added.</p></div><a class="text-link" href="{{ route('admin.people.index') }}">View all <span>→</span></a></div>
         @if ($recentPeople->isEmpty())<div class="empty-state"><span>♙</span><strong>No people registered yet</strong><p>Add your first record to generate shareable QR codes.</p><a class="button button-primary" href="{{ route('admin.people.create') }}">Add New Person</a></div>@else
         <div class="table-scroll"><table><thead><tr><th>Person</th><th>Organization</th><th>QR status</th><th>Added</th></tr></thead><tbody>@foreach ($recentPeople as $person)<tr><td><a class="person-link" href="{{ route('admin.people.show', $person) }}"><span class="table-avatar">{{ strtoupper(substr($person->full_name, 0, 1)) }}</span><span>{{ $person->full_name }}<small>{{ $person->email ?: 'No email added' }}</small></span></a></td><td>{{ $person->organization ?: '—' }}</td><td><span class="badge {{ $person->currentQrCode ? 'badge-green' : 'badge-gray' }}">{{ $person->currentQrCode ? 'Generated' : 'Not generated' }}</span></td><td>{{ $person->created_at->format('M j, Y') }}</td></tr>@endforeach</tbody></table></div>@endif
     </section>
-    <section class="panel-card"><div class="section-heading"><div><h2>Recent activity</h2><p class="muted">Latest workspace events.</p></div><a class="text-link" href="{{ route('admin.activity-logs.index') }}">View logs <span>→</span></a></div>
+    <section class="panel-card"><div class="section-heading"><div><h2>Recent activity</h2><p class="muted">Latest profile and QR code changes.</p></div><a class="text-link" href="{{ route('admin.activity-logs.index') }}">View logs <span>→</span></a></div>
         @forelse ($recentActivity as $event)<div class="activity-row"><span class="activity-dot">•</span><div><strong>{{ str($event->action)->replace('.', ' ')->headline() }}</strong><p class="muted">{{ $event->person?->full_name ?? $event->user?->name ?? 'Workspace event' }} · {{ $event->created_at->diffForHumans() }}</p></div></div>@empty<div class="empty-state compact"><p>No activity has been recorded yet.</p></div>@endforelse
-        <div class="scanner-callout"><span>⌗</span><div><strong>Scan without a database lookup</strong><p>Personal information is embedded directly in the QR code.</p><a href="{{ route('scanner') }}">Open QR Scanner →</a></div></div>
+        <div class="scanner-callout"><span>⌗</span><div><strong>Open a public portfolio from a QR code</strong><p>New codes link directly to the person’s public profile.</p><a href="{{ route('scanner') }}">Open QR Scanner →</a></div></div>
     </section>
 </div>
 @endsection
